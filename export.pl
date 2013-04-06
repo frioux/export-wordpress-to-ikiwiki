@@ -6,6 +6,8 @@ use warnings;
 use XML::Simple;
 use DateTime::Format::Strptime;
 use HTML::WikiConverter;
+use LWP::UserAgent;
+use Try::Tiny;
 
 die "usage: $0 import_file subdir [branch] | git-fast-import"
    unless @ARGV == 2 or @ARGV == 3;
@@ -20,6 +22,7 @@ my $date_parser = DateTime::Format::Strptime->new(
    time_zone => 'UTC',
 );
 
+POST:
 for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}) {
    my $stub = $x =~ m<([^/]+)\/$>
       ? $1
@@ -52,6 +55,39 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    say "M 644 inline $subdir/$stub.mdwn";
    say 'data ' . length $content;
    say $content;
+
+   get_comments($x->{link})
+      if $x->{'wp:post_type'} eq 'post'
+}
+
+sub get_comments {
+   my ($url, $post) = @_;
+
+   state $ua = LWP::UserAgent->new;
+
+   #$url =~ s(\?p=)(archive/);
+   warn "\nxxx: $url/feed\n";
+   my $content = $ua->get("$url/feed")->decoded_content;
+   my $first;
+   my $bail;
+   my $decoded =
+      try { XMLin($content, ForceArray => ['item']) }
+      catch { $bail = 1 };
+
+   return if $bail;
+
+   COMMENT:
+   for my $x (@{$decoded->{channel}{item}}) {
+      warn $content unless $first;
+      $first++;
+      use Devel::Dwarn;
+      Dwarn {
+         content => convert_content($x->{'content:encoded'}),
+         author  => $x->{'dc:creator'},
+         guid    => $x->{guid}{content},
+         date    => $x->{pubDate},
+      };
+   }
 }
 
 sub convert_content {
@@ -74,6 +110,18 @@ sub convert_content {
    my $start_code = qr(<pre[^>]*>);
    my $end_code = qr(</pre>);
 
+   $body =~ s(&#(?:8217|039);)(')g;
+   $body =~ s(&(?:quot|#822[01]);)(")g;
+   $body =~ s(&lt;)(<)g;
+   $body =~ s(&gt;)(>)g;
+   $body =~ s(&amp;)(&)g;
+   $body =~ s(&#8230;)(...)g;
+   $body =~ s(&#821[12];)(-)g;
+   $body =~ s(&#8216;)(')g;
+   $body =~ s(&#8242;)(')g;
+   $body =~ s(&infin;)(∞)g;
+   #$body =~ s(&#41;)(@)g;
+   $body =~ s(&nbsp;)()g;
    $body =~ s(<code[^>]*>)(<pre>)g;
    $body =~ s(</code>)(</pre>)g;
 
@@ -95,6 +143,8 @@ sub convert_content {
       } elsif ($t =~ $end_code) {
          $in_code = 0;
       } else {
+         die "$t !!! '$1'" if $t =~ m/&([^;\s]+);/ && $1 !~ /[lg]t/;
+
          $t = "<p>$t</p>"
       }
       push @new_tokens, $t
