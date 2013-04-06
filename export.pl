@@ -10,6 +10,7 @@ use LWP::UserAgent;
 use Try::Tiny;
 use Digest::MD5 'md5_hex';
 use JSON;
+use URI;
 
 die "usage: $0 import_file subdir [branch] | git-fast-import"
    unless @ARGV == 2 or @ARGV == 3;
@@ -21,6 +22,7 @@ my ($file, $subdir, $branch) = @ARGV;
 
 my %events;
 my %comment_metadata = %{decode_json(do { local (@ARGV, $/ ) = 'out.json'; <> })};
+my %backcompat_urlmap;
 
 POST:
 for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}) {
@@ -59,6 +61,8 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
             }
          }
       );
+
+   $backcompat_urlmap{URI->new($x->{link})->path} = "/posts/$stub/";
 
    $events{$timestamp} = join "\n",
       "commit refs/heads/$branch",
@@ -160,6 +164,8 @@ COMMENT
 }
 
 say $events{$_} for sort keys %events;
+open my $fh, '>', 'map.json';
+print {$fh} encode_json(\%backcompat_urlmap);
 
 sub convert_content {
    my $body = shift;
