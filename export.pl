@@ -18,6 +18,8 @@ chomp(my $email = qx(git config --get user.email));
 
 my ($file, $subdir, $branch) = @ARGV;
 
+my %events;
+
 POST:
 for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}) {
    state $date_parser = DateTime::Format::Strptime->new(
@@ -55,15 +57,17 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
          }
       );
 
-   say "commit refs/heads/$branch";
-   say "committer $name <$email> $timestamp +0000";
-   say 'data <<8675309';
-   say $msg;
-   say '8675309';
-   say "M 644 inline $subdir/$stub.mdwn";
-   say 'data <<8675309';
-   say $content;
-   say '8675309';
+   $events{$timestamp} = join "\n",
+      "commit refs/heads/$branch",
+      "committer $name <$email> $timestamp +0000",
+      'data <<8675309',
+      $msg,
+      '8675309',
+      "M 644 inline $subdir/$stub.mdwn",
+      'data <<8675309',
+      $content,
+      '8675309'
+   ;
 
    get_comments($x->{link}, "$subdir/$stub")
       if $x->{'wp:post_type'} eq 'post'
@@ -118,16 +122,17 @@ sub get_comments {
       my $content = convert_content($x->{'content:encoded'});
       utf8::encode($x->{'dc:creator'});
 
-      say "commit refs/heads/$branch";
-      # still need to get email address
-      say "committer $x->{'dc:creator'} <$x->{'dc:creator'}> $timestamp +0000";
-      say 'data <<8675309';
-      say $msg;
-      say '8675309';
-      say "M 644 inline " . unique_comment_location($dir, $content);
-      say 'data <<8675309';
+      $events{$timestamp} = join "\n",
+         "commit refs/heads/$branch",
+         # still need to get email address
+         "committer $x->{'dc:creator'} <$x->{'dc:creator'}> $timestamp +0000",
+         'data <<8675309',
+         $msg,
+         '8675309',
+         "M 644 inline " . unique_comment_location($dir, $content),
+         'data <<8675309',
 
-      print <<"COMMENT";
+      <<"COMMENT",
 [[!comment format=mdwn
  username="$x->{'dc:creator'}"
  date="$formatted_date"
@@ -135,9 +140,12 @@ sub get_comments {
 $content
 """]]
 COMMENT
-      say '8675309';
+      '8675309'
+      ;
    }
 }
+
+say $events{$_} for sort keys %events;
 
 sub convert_content {
    my $body = shift;
