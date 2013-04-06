@@ -9,6 +9,7 @@ use HTML::WikiConverter;
 use LWP::UserAgent;
 use Try::Tiny;
 use Digest::MD5 'md5_hex';
+use JSON;
 
 die "usage: $0 import_file subdir [branch] | git-fast-import"
    unless @ARGV == 2 or @ARGV == 3;
@@ -19,9 +20,11 @@ chomp(my $email = qx(git config --get user.email));
 my ($file, $subdir, $branch) = @ARGV;
 
 my %events;
+my %comment_metadata = %{decode_json(do { local (@ARGV, $/ ) = 'out.json'; <> })};
 
 POST:
 for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}) {
+   warn " -- importing post: $x->{title}\n";
    state $date_parser = DateTime::Format::Strptime->new(
       pattern => '%F %T',
       time_zone => 'UTC',
@@ -107,6 +110,8 @@ sub get_comments {
       $date =~ s/Nov/11/;
       $date =~ s/Dec/12/;
 
+      my $metadata = $comment_metadata{$x->{link} =~ s/^.*#comment-//r};
+
       state $date_parser = DateTime::Format::Strptime->new(
          pattern => '%d %m %Y %T',
          time_zone => 'UTC',
@@ -117,15 +122,24 @@ sub get_comments {
 
       my $timestamp = $datetime->epoch;
       my $formatted_date = "$timestamp";
+      my $email = $metadata->{comment_author_email}
+         || $x->{'dc:creator'} . '@WP';
 
-      my $msg = 'Added a comment';
       my $content = convert_content($x->{'content:encoded'});
+      my $extra = "User-Agent: $metadata->{comment_agent}\n"
+                . "IP-Address: $metadata->{comment_author_IP}\n";
+      if (my $u = $metadata->{comment_author_url}) {
+         $extra .= "Link: $u\n"
+      }
+      my $msg = "Added a comment\n\n$extra";
       utf8::encode($x->{'dc:creator'});
+      my $committer = "$x->{'dc:creator'} <$email>";
 
+      warn " -- importing comment from $committer\n";
       $events{$timestamp} = join "\n",
          "commit refs/heads/$branch",
          # still need to get email address
-         "committer $x->{'dc:creator'} <$x->{'dc:creator'}> $timestamp +0000",
+         "committer $committer $timestamp +0000",
          'data <<8675309',
          $msg,
          '8675309',
