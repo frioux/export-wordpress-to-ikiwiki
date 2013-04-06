@@ -8,6 +8,7 @@ use DateTime::Format::Strptime;
 use HTML::WikiConverter;
 use LWP::UserAgent;
 use Try::Tiny;
+use Digest::MD5 'md5_hex';
 
 die "usage: $0 import_file subdir [branch] | git-fast-import"
    unless @ARGV == 2 or @ARGV == 3;
@@ -17,19 +18,21 @@ chomp(my $email = qx(git config --get user.email));
 
 my ($file, $subdir, $branch) = @ARGV;
 
-my $date_parser = DateTime::Format::Strptime->new(
-   pattern => '%F %T',
-   time_zone => 'UTC',
-);
-
 POST:
 for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}) {
+   state $date_parser = DateTime::Format::Strptime->new(
+      pattern => '%F %T',
+      time_zone => 'UTC',
+   );
+
    my $stub = $x =~ m<([^/]+)\/$>
       ? $1
       : lc($x->{title} =~ s/\W/-/gr =~ s/-$//r)
    ;
 
-   my $msg = qq($x->{title}\n\nfrom WordPress [$x->{guid}{content}]);
+   my $guid = $x->{guid}{content} || $x->{link};
+   utf8::encode($x->{title});
+   my $msg = qq($x->{title}\n\nfrom WordPress [$guid]);
    my $timestamp = $date_parser
       ->parse_datetime($x->{'wp:post_date_gmt'})
       ->epoch;
@@ -39,34 +42,38 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
 
    my $content =
       sprintf(qq([[!meta title="%s"]]\n), $x->{title} =~ s/"/\\"/gr) .
-      qq([[!meta date="$timestamp"]]\n) .
       convert_content($x->{'content:encoded'}) . "\n\n" .
       join("\n",
          map '[[!tag ' . s/ /-/r . ']]',
-         grep $_ ne 'uncategorized',
-         map $_->{nicename},
-         @$c,
+         keys %{
+            +{
+               map { $_ => 1 }
+               grep $_ ne 'uncategorized',
+               map $_->{nicename},
+               @$c
+            }
+         }
       );
 
    say "commit refs/heads/$branch";
    say "committer $name <$email> $timestamp +0000";
-   say 'data ' . length $msg ;
+   say 'data <<8675309';
    say $msg;
+   say '8675309';
    say "M 644 inline $subdir/$stub.mdwn";
-   say 'data ' . length $content;
+   say 'data <<8675309';
    say $content;
+   say '8675309';
 
-   get_comments($x->{link})
+   get_comments($x->{link}, "$subdir/$stub")
       if $x->{'wp:post_type'} eq 'post'
 }
 
 sub get_comments {
-   my ($url, $post) = @_;
+   my ($url, $dir) = @_;
 
    state $ua = LWP::UserAgent->new;
 
-   #$url =~ s(\?p=)(archive/);
-   warn "\nxxx: $url/feed\n";
    my $content = $ua->get("$url/feed")->decoded_content;
    my $first;
    my $bail;
@@ -78,15 +85,57 @@ sub get_comments {
 
    COMMENT:
    for my $x (@{$decoded->{channel}{item}}) {
-      warn $content unless $first;
-      $first++;
-      use Devel::Dwarn;
-      Dwarn {
-         content => convert_content($x->{'content:encoded'}),
-         author  => $x->{'dc:creator'},
-         guid    => $x->{guid}{content},
-         date    => $x->{pubDate},
-      };
+      my $date = $x->{pubDate};
+      $date =~ s/^\S+\s//;
+      $date =~ s/\s\S+$//;
+
+      #ghetto
+      $date =~ s/Jan/01/;
+      $date =~ s/Feb/02/;
+      $date =~ s/Mar/03/;
+      $date =~ s/Apr/04/;
+      $date =~ s/May/05/;
+      $date =~ s/Jun/06/;
+      $date =~ s/Jul/07/;
+      $date =~ s/Aug/08/;
+      $date =~ s/Sep/09/;
+      $date =~ s/Oct/10/;
+      $date =~ s/Nov/11/;
+      $date =~ s/Dec/12/;
+
+      state $date_parser = DateTime::Format::Strptime->new(
+         pattern => '%d %m %Y %T',
+         time_zone => 'UTC',
+      );
+
+      my $datetime = $date_parser
+         ->parse_datetime($date);
+
+      my $timestamp = $datetime->epoch;
+      my $formatted_date = "$timestamp";
+
+      my $msg = 'Added a comment';
+      my $content = convert_content($x->{'content:encoded'});
+      utf8::encode($x->{'dc:creator'});
+
+      say "commit refs/heads/$branch";
+      # still need to get email address
+      say "committer $x->{'dc:creator'} <$x->{'dc:creator'}> $timestamp +0000";
+      say 'data <<8675309';
+      say $msg;
+      say '8675309';
+      say "M 644 inline " . unique_comment_location($dir, $content);
+      say 'data <<8675309';
+
+      print <<"COMMENT";
+[[!comment format=mdwn
+ username="$x->{'dc:creator'}"
+ date="$formatted_date"
+ content="""
+$content
+"""]]
+COMMENT
+      say '8675309';
    }
 }
 
@@ -151,4 +200,20 @@ sub convert_content {
    }
 
    $converter->html2wiki(join "\n\n", @new_tokens)
+}
+
+sub unique_comment_location {
+   my ($dir, $content) = @_;
+
+   utf8::encode($content);
+   my $md5 = md5_hex($content);
+
+   my $location;
+   my $i = 0;
+   do {
+      $i++;
+      $location = "$dir/comment_${i}_$md5._comment";
+   } while -e $location;
+
+   return $location
 }
