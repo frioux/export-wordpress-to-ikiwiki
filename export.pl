@@ -214,6 +214,7 @@ sub convert_content {
    my $start_code = qr(<pre[^>]*>);
    my $end_code = qr(</pre>);
 
+   $body =~ s(http://blog\.afoolishmanifesto\.com)()g;
    $body =~ s(&#(?:8217|039);)(')g;
    $body =~ s(&(?:quot|#822[01]);)(")g;
    $body =~ s(&lt;)(<)g;
