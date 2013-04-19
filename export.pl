@@ -21,7 +21,7 @@ chomp(my $email = qx(git config --get user.email));
 my ($file, $subdir, $branch) = @ARGV;
 
 my %events;
-my %comment_metadata = %{decode_json(do { local (@ARGV, $/ ) = 'out.json'; <> })};
+my %comment_metadata = %{decode_json(do { local (@ARGV, $/ ) = '/home/frew/out.json'; <> })};
 my %backcompat_urlmap;
 my %seen_tags;
 
@@ -63,18 +63,16 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    $seen_tags{$_} = 1 for keys %tags_to_create;
 
    my $content =
-      sprintf(qq([[!meta title="%s"]]\n), $x->{title} =~ s/"/\\"/gr) .
-      convert_content($x->{'content:encoded'}) . "\n\n" .
-      join("\n",
-         map '[[!tag ' . s/ /-/r . ']]',
-         keys %{
-            +{
-               map { $_ => 1 }
-               grep $_ ne 'uncategorized',
-               map $_->{nicename},
-               @$c
-            }
-         }
+      sprintf(qq([[!meta title="%s"]]\n), $x->{title} =~ s/"/\\"/gr) . (
+         $x->{guid}{content}
+            ? qq([[!meta guid="$guid"]]\n)
+            : '',
+      ) .
+      convert_content($x->{'content:encoded'}) .
+      (
+         @tags
+            ? "\n\n[[!tag " . (join ' ', @tags) . ' ]]'
+            : ''
       );
 
    $backcompat_urlmap{URI->new($x->{link})->path} = "/posts/$stub/";
