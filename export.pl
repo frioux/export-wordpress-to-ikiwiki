@@ -23,6 +23,7 @@ my ($file, $subdir, $branch) = @ARGV;
 my %events;
 my %comment_metadata = %{decode_json(do { local (@ARGV, $/ ) = 'out.json'; <> })};
 my %backcompat_urlmap;
+my %seen_tags;
 
 POST:
 for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}) {
@@ -47,6 +48,20 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    my $c = $x->{category};
    $c = [$c] if ref $c && ref $c ne 'ARRAY';
 
+   my @tags = keys %{
+      +{
+         map { $_ => 1 }
+         grep $_ ne 'uncategorized',
+         map $_->{nicename},
+         @$c
+      }
+   };
+   my %tags_to_create = map { $_ => 1 } @tags;
+   delete $tags_to_create{$_}
+      for keys %seen_tags;
+
+   $seen_tags{$_} = 1 for keys %tags_to_create;
+
    my $content =
       sprintf(qq([[!meta title="%s"]]\n), $x->{title} =~ s/"/\\"/gr) .
       convert_content($x->{'content:encoded'}) . "\n\n" .
@@ -67,13 +82,25 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    $events{$timestamp} = join "\n",
       "commit refs/heads/$branch",
       "committer $name <$email> $timestamp +0000",
+
       'data <<8675309',
       $msg,
       '8675309',
+
       "M 644 inline $subdir/$stub.mdwn",
       'data <<8675309',
       $content,
-      '8675309'
+      '8675309',
+
+      map {;
+         "M 644 inline tags/$_.mdwn",
+         'data <<8675309',
+         qq([[!meta title="pages tagged $_"]]),
+         '',
+         qq([[!inline pages="tagged($_)" actions="no" archive="yes"),
+         'feedshow=10]]',
+         '8675309',
+      } sort keys %tags_to_create;
    ;
 
    get_comments($x->{link}, "$subdir/$stub")
