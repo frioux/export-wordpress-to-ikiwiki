@@ -158,14 +158,16 @@ sub get_comments {
       my $content = convert_content($x->{'content:encoded'});
       my $extra = "User-Agent: $metadata->{comment_agent}\n"
                 . "IP-Address: $metadata->{comment_author_IP}\n";
-      if (my $u = $metadata->{comment_author_url}) {
-         $extra .= "Link: $u\n"
-      }
       my $msg = "Added a comment\n\n$extra";
       utf8::encode($x->{'dc:creator'});
       my $committer = "$x->{'dc:creator'} <$email>";
 
       warn " -- importing comment from $committer\n";
+
+      my $link = '';
+
+      $link = "\n\n[url]($metadata->{comment_author_url})"
+         if $metadata->{comment_author_url};
       $events{$timestamp} = join "\n",
          "commit refs/heads/$branch",
          # still need to get email address
@@ -181,7 +183,7 @@ sub get_comments {
  username="$x->{'dc:creator'}"
  date="$formatted_date"
  content="""
-$content
+$content$link
 """]]
 COMMENT
       '8675309'
