@@ -11,6 +11,7 @@ use Try::Tiny;
 use Digest::MD5 'md5_hex';
 use JSON;
 use URI;
+use HTML::Entities;
 
 die "usage: $0 import_file subdir [branch] | git-fast-import"
    unless @ARGV == 2 or @ARGV == 3;
@@ -215,9 +216,6 @@ sub convert_content {
    $body =~ s(http://blog\.afoolishmanifesto\.com)()g;
    $body =~ s(&#(?:8217|039);)(')g;
    $body =~ s(&(?:quot|#822[01]);)(")g;
-   $body =~ s(&lt;)(<)g;
-   $body =~ s(&gt;)(>)g;
-   $body =~ s(&amp;)(&)g;
    $body =~ s(&#8230;)(...)g;
    $body =~ s(&#821[12];)(-)g;
    $body =~ s(&#8216;)(')g;
@@ -225,6 +223,7 @@ sub convert_content {
    $body =~ s(&infin;)(∞)g;
    #$body =~ s(&#41;)(@)g;
    $body =~ s(&nbsp;)()g;
+   decode_entities($body);
    $body =~ s(<code[^>]*>)(<pre>)g;
    $body =~ s(</code>)(</pre>)g;
 
