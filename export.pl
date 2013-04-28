@@ -11,6 +11,7 @@ use Try::Tiny;
 use Digest::MD5 'md5_hex';
 use JSON;
 use URI;
+use Syntax::Keyword::Gather;
 use HTML::Entities;
 
 die "usage: $0 import_file subdir [branch] | git-fast-import"
@@ -254,7 +255,18 @@ sub convert_content {
       push @new_tokens, $t
    }
 
-   $converter->html2wiki(join "\n\n", @new_tokens)
+   my $converted = $converter->html2wiki(join "\n\n", @new_tokens);
+   decode_entities($converted);
+
+   join $/, gather {
+      for my $line (split $/, $converted) {
+         if ($line =~ m/    /) {
+            take $line =~ s/\\([_{}*#])/$1/gr
+         } else {
+            take $line
+         }
+      }
+   }
 }
 
 sub unique_comment_location {
