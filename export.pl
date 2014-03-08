@@ -263,7 +263,7 @@ sub convert_content {
    join $/, gather {
       for my $line (split $/, $converted) {
          if ($line =~ m/    /) {
-            take $line =~ s/\\([_{}*#])/$1/gr
+            take $line =~ s/\\([\\_{}*#])/$1/gr
          } else {
             take $line
          }
