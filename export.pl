@@ -23,6 +23,8 @@ chomp(my $email = qx(git config --get user.email));
 my ($file, $subdir, $branch) = @ARGV;
 
 my %events;
+# generated with merely:
+# perl -MDBI -MJSON -E'my $dbh = DBI->connect("DBI:mysql:database=wordpressdb;host=mysql.afoolishmanifesto.com", "wordpress", "xxx"); print encode_json($dbh->selectall_hashref("SELECT * FROM wp_comments", "comment_ID"))' > out.json
 my %comment_metadata = %{decode_json(do { local (@ARGV, $/ ) = '/home/frew/out.json'; <> })};
 my %backcompat_urlmap;
 my %seen_tags;
