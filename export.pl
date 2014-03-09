@@ -45,9 +45,10 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    my $guid = $x->{guid}{content} || $x->{link};
    utf8::encode($x->{title});
    my $msg = qq($x->{title}\n\nfrom WordPress [$guid]);
-   my $timestamp = $date_parser
-      ->parse_datetime($x->{'wp:post_date_gmt'})
-      ->epoch;
+   my $posted_at = $date_parser
+      ->parse_datetime($x->{'wp:post_date_gmt'});
+
+   my $timestamp = $posted_at->epoch;
 
    my $c = $x->{category};
    $c = [$c] if ref $c && ref $c ne 'ARRAY';
@@ -67,7 +68,9 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    $seen_tags{$_} = 1 for keys %tags_to_create;
 
    my $content =
-      sprintf(qq([[!meta title="%s"]]\n), $x->{title} =~ s/"/\\"/gr) . (
+      sprintf(qq([[!meta title="%s"]]\n), $x->{title} =~ s/"/\\"/gr) .
+      sprintf(qq([[!meta date="%s"]]\n), $posted_at->ymd('-') . q( ) . $posted_at->hms(':')) .
+      (
          $x->{guid}{content}
             ? qq([[!meta guid="$guid"]]\n)
             : '',
