@@ -3,4 +3,4 @@ requires 'DateTime::Format::Strptime';
 requires 'HTML::WikiConverter'; # fails tests
 requires 'JSON';
 requires 'Syntax::Keyword::Gather';
-requires 'HTML::WikiConverter::Markdown';
+requires 'HTML::WikiConverter::Markdown'; # my personal fork, ikiwiki branch
