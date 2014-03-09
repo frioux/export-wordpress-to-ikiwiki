@@ -52,7 +52,7 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
    my $c = $x->{category};
    $c = [$c] if ref $c && ref $c ne 'ARRAY';
 
-   my @tags = keys %{
+   my @tags = sort keys %{
       +{
          map { $_ => 1 }
          grep $_ ne 'uncategorized',
