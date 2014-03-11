@@ -115,7 +115,7 @@ for my $x (grep $_->{'wp:status'} eq 'publish', @{XMLin($file)->{channel}{item}}
 sub get_comments {
    my ($url, $dir) = @_;
 
-   state $ua = LWP::UserAgent->new;
+   state $ua = LWP::UserAgent->new(keep_alive => 1);
 
    my $content = $ua->get("$url/feed")->decoded_content;
    my $first;
